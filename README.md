@@ -80,8 +80,8 @@ Please DO NOT change the Progress Log below. Leave it as it is.
 - [Part 1](PART1.md)
 - [Part 2](PART2.md)
 
-## Contributors
+## Contributors and Percentage 
 
-- Mohamed Imran Bin Mohamed Yunus (1211101935)
-- Muhammad Syahir Nazreen Bin Abdul Hamid (1211102057)
-- Azizah Maisarah Binti Haja Mohaideen (1211103034)
+- Mohamed Imran Bin Mohamed Yunus (1211101935) (40 percent)       
+- Muhammad Syahir Nazreen Bin Abdul Hamid (1211102057) (30 percent)
+- Azizah Maisarah Binti Haja Mohaideen (1211103034) (30 percent)
