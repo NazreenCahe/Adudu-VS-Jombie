@@ -8,10 +8,10 @@
 // Phones: 01121072006 | 0176723950 | 01118756625 
 // ********************************************************* 
 
-
 #include <iostream>
 #include <vector>
 #include <string>
+#include <filesystem>
 #include <fstream>  // For save and load file
 #include <stdlib.h> // For system()
 #include <iomanip>  // for setw()
@@ -29,11 +29,18 @@ public: // public can be accessed by any function or other code that has access 
     void save();
     void load();
     void ingame();
+    void rtrail();
+    void arrow();
+    void rock();
+    void pod();
+    void health_pack();
+    void zombieontop();
     void print_board(vector<int> zombies_columns, vector<int> zombies_rows);
     void move_zombie(int &zombies_column, int &zombies_row, int zombie_index);
     void attack_alien(int zombies_column, int zombies_row, int zombie_index);
     bool acheck_collision(int alien_column, int alien_row);
     bool zcheck_collision(int zombies_column, int zombies_row);
+    bool empty(int x, int y);
 
 private:                        // can only be accessed by other members of the class
     vector<vector<char>> board; // represent the whole map
@@ -46,7 +53,9 @@ private:                        // can only be accessed by other members of the 
     int alien_health, alien_attack;
 
     // Trail
-    int trail_column, trail_row;
+    int strail;
+    vector<int> trail_row;
+    vector<int> trail_column;
 
     // Zombie
     int num_zombies;
@@ -54,8 +63,24 @@ private:                        // can only be accessed by other members of the 
     vector<int> zombies_health, zombies_attack, zombies_range;
 
     // Rock
+    bool turn;
     int num_rocks;
+    int prev_column, prev_row;
     vector<int> rocks_columns, rocks_rows;
+
+    // Health
+    int num_health;
+    vector<int> health_columns, health_rows;
+
+    // Pod
+    int num_pod;
+    vector<int> pod_columns, pod_rows;
+
+    // Arrows
+    int num_arrows;
+    bool arrow_move;
+    vector<char> arrows;
+    vector<int> arrows_columns, arrows_rows, arrow_types;
 
     bool game_over;
 };
@@ -82,13 +107,41 @@ Game::Game()
     }
 
     // Rocks
+    turn = false;
+    prev_column, prev_row = -1;
+    num_rocks = (row * column) / 7;
     for (int r = 0; r < num_rocks; r++)
     {
         rocks_columns.push_back(r);
         rocks_rows.push_back(r);
     }
 
-    trail_column, trail_row = -1;
+    // Health
+    num_health = (row * column) / 7;
+    for (int h = 0; h < num_health; h++)
+    {
+        health_columns.push_back(h);
+        health_rows.push_back(h);
+    }
+
+    // Pod
+    num_pod = (row * column) / 7;
+    for (int h = 0; h < num_pod; h++)
+    {
+        pod_columns.push_back(h);
+        pod_rows.push_back(h);
+    }
+
+    // Arrow
+    arrows = {'^', 'v', '<', '>'};
+    num_arrows = (row * column) / 6;
+    arrow_move = false;
+    for (int a = 0; a < num_arrows; a++)
+    {
+        arrows_columns.push_back(a);
+        arrows_rows.push_back(a);
+        arrow_types.push_back(rand() % arrows.size());
+    }
 
     game_over = false;
 }
@@ -222,109 +275,100 @@ void Game::customize()
         }
     }
 
+    system("PAUSE");
     initialization();
 }
 
 // Game board Initialization
 void Game::initialization()
 {
-    // Initialize board with empty spaces
     board.resize(row, vector<char>(column, ' '));
-
-    // Initialize alien at the center of the board
     alien_column = column / 2;
     alien_row = row / 2;
     board[alien_row][alien_column] = 'A';
 
-    // Initialize random zombies positions
     zombies_columns.resize(num_zombies);
     zombies_rows.resize(num_zombies);
+    zombies_health.resize(num_zombies);
+    zombies_attack.resize(num_zombies);
+    zombies_range.resize(num_zombies);
 
     for (int i = 0; i < num_zombies; i++)
     {
-        // To make sure the zombies are place far away from alien at the start of the game
-        int row_dis, col_dis;
         do
         {
             zombies_rows[i] = rand() % row;
             zombies_columns[i] = rand() % column;
-            row_dis = abs(alien_row - zombies_rows[i]);
-            col_dis = abs(alien_column - zombies_columns[i]); // abs = absolute value. make sure the integer is always positif
+        } while (!empty(zombies_rows[i], zombies_columns[i]) ||
+                 (abs(zombies_rows[i] - alien_row) < 2 &&
+                  abs(zombies_columns[i] - alien_column) < 4));
+        board[zombies_rows[i]][zombies_columns[i]] = i + '1';
 
-        } while (row_dis < 2 && col_dis < 4);
+        int health_options[] = {100, 150};
+        zombies_health[i] = health_options[rand() % 2];
 
-        // check if zombies spawn on top of other zombies
-        for (int j = 0; j < i; j++)
-        {
-            if (zombies_columns[i] == zombies_columns[j] && zombies_rows[i] == zombies_rows[j] ||
-                (abs(zombies_columns[i] - zombies_columns[j]) <= 3 && abs(zombies_rows[i] - zombies_rows[j]) <= 1)) // make sure rocks spawn at least 1 row and 3 column away.
-            {
-                zombies_columns[i] = rand() % column;
-                zombies_rows[i] = rand() % row;
-                j = -1; // reset the loop
-            }
-        }
+        int attack_options[] = {5, 10, 15};
+        zombies_attack[i] = attack_options[rand() % 3];
 
-        // Randomize zombies health
-        int health_options[] = {100, 150, 200, 250};
-        int health_random = rand() % 4;
-        zombies_health[i] = health_options[health_random];
-
-        // Randomize zombies attack
-        int attack_options[] = {5, 10, 15, 20};
-        int attack_random = rand() % 4;
-        zombies_attack[i] = attack_options[attack_random];
-
-        // Randomize zombies range
         int range_options[] = {1, 2};
-        int range_random = rand() % 2;
-        zombies_range[i] = range_options[range_random];
+        zombies_range[i] = range_options[rand() % 2];
     }
 
-    // Initialize random rocks positions
-    num_rocks = (row * column) / 7;
+    // Initialize rock positions
     rocks_columns.resize(num_rocks);
     rocks_rows.resize(num_rocks);
 
     for (int r = 0; r < num_rocks; r++)
     {
-        // Generate random position for rock
-        rocks_columns[r] = rand() % column;
-        rocks_rows[r] = rand() % row;
-
-        // check if rocks spawn on top of alien, zombies, other rocks or health
-        bool collision = true;
-        while (collision)
+        do
         {
-            collision = false;
-            if (rocks_columns[r] == alien_column && rocks_rows[r] == alien_row) // check Alien
-            {
-                collision = true;
-            }
-            else
-            {
-                for (int i = 0; i < num_zombies; i++)
-                {
-                    if (rocks_columns[r] == zombies_columns[i] && rocks_rows[r] == zombies_rows[i]) // check Zombie
-                    {
-                        collision = true;
-                    }
-                }
-                for (int j = 0; j < r; j++)
-                {
-                    if ((rocks_columns[r] == rocks_columns[j] && rocks_rows[r] == rocks_rows[j]) ||                 // check if rock in on top of each other
-                        (abs(rocks_columns[r] - rocks_columns[j]) <= 1 && abs(rocks_rows[r] - rocks_rows[j]) <= 1)) // make sure rocks spawn at least 1 row and 1 column away.
-                    {
-                        collision = true;
-                    }
-                }
-                if (collision) // if collision is true it generates new position
-                {
-                    rocks_columns[r] = rand() % column;
-                    rocks_rows[r] = rand() % row;
-                }
-            }
-        }
+            rocks_rows[r] = rand() % row;
+            rocks_columns[r] = rand() % column;
+        } while (!empty(rocks_rows[r], rocks_columns[r]));
+        board[rocks_rows[r]][rocks_columns[r]] = 'r';
+    }
+
+    // Initialize health packs positions
+    health_columns.resize(num_health);
+    health_rows.resize(num_health);
+
+    for (int h = 0; h < num_health; h++)
+    {
+        do
+        {
+            health_rows[h] = rand() % row;
+            health_columns[h] = rand() % column;
+        } while (!empty(health_rows[h], health_columns[h]));
+        board[health_rows[h]][health_columns[h]] = 'h';
+    }
+
+    // Initialize random pod positions
+    pod_columns.resize(num_pod);
+    pod_rows.resize(num_pod);
+
+    for (int p = 0; p < num_pod; p++)
+    {
+        do
+        {
+            pod_rows[p] = rand() % row;
+            pod_columns[p] = rand() % column;
+        } while (!empty(pod_rows[p], pod_columns[p]));
+        board[pod_rows[p]][pod_columns[p]] = 'p';
+    }
+
+    // Initialize random arrow positions and types
+    arrows_columns.resize(num_arrows);
+    arrows_rows.resize(num_arrows);
+    arrow_types.resize(num_arrows);
+
+    for (int a = 0; a < num_arrows; a++)
+    {
+        do
+        {
+            arrows_rows[a] = rand() % row;
+            arrows_columns[a] = rand() % column;
+        } while (!empty(arrows_rows[a], arrows_columns[a]));
+        board[arrows_rows[a]][arrows_columns[a]] = arrows[arrow_types[a]];
     }
 }
 
@@ -355,18 +399,16 @@ void Game::print_board(vector<int> zombies_columns, vector<int> zombies_rows)
         }
     }
 
-    // Print trail
-    if (trail_column != -1 && trail_row != -1) // Does not print the trail at the start of the game
+    // Trail
+    for (int t = 0; t < trail_row.size(); t++)
     {
-        for (int i = 0; i < row; i++)
+        if (strail == 1)
         {
-            for (int j = 0; j < column; j++)
-            {
-                if (trail_column == j && trail_row == i)
-                {
-                    board[i][j] = '.';
-                }
-            }
+            board[trail_row[t]][trail_column[t]] = '.';
+        }
+        else if (strail == 0)
+        {
+            board[trail_row[t]][trail_column[t]] = ' ';
         }
     }
 
@@ -383,6 +425,24 @@ void Game::print_board(vector<int> zombies_columns, vector<int> zombies_rows)
     for (int r = 0; r < num_rocks; r++)
     {
         board[rocks_rows[r]][rocks_columns[r]] = 'r';
+    }
+
+    // Print Health packs
+    for (int h = 0; h < num_health; h++)
+    {
+        board[health_rows[h]][health_columns[h]] = 'h';
+    }
+
+    // Print pod
+    for (int p = 0; p < num_pod; p++)
+    {
+        board[pod_rows[p]][pod_columns[p]] = 'p';
+    }
+
+    // Print arrows
+    for (int a = 0; a < num_arrows; a++)
+    {
+        board[arrows_rows[a]][arrows_columns[a]] = arrows[arrow_types[a]];
     }
 
     // print row number
@@ -427,7 +487,7 @@ void Game::print_board(vector<int> zombies_columns, vector<int> zombies_rows)
 
     // Print character attributes
     cout << "\nAlien   : "
-         << "Health: " << setw(3) << alien_health << ", Attack: " << setw(2) << alien_attack << endl;
+         << "Health: " << setw(3) << alien_health << ", Attack: " << setw(2) << alien_attack << " " << setw(2) << "( " << alien_row + 1 << ", " << alien_column + 1 <<" )" <<  endl;
     for (int i = 0; i < num_zombies; i++)
     {
         cout << "Zombie " << i + 1 << ": "
@@ -561,9 +621,6 @@ void Game::ingame()
         // Print board
         print_board(zombies_columns, zombies_rows);
 
-        trail_column = alien_column;
-        trail_row = alien_row;
-
         // Move alien
 
         cout << "\nAlien's turn \n";
@@ -573,170 +630,349 @@ void Game::ingame()
         string move;
         cin >> move;
 
-        if (move == "up")
+        if (move == "up" || move == "w" || move == "W")
         {
-            if (alien_row > 0)
+            while (alien_row > 0 && !acheck_collision(alien_column, alien_row - 1))
             {
-                int new_row = alien_row - 1;
-                if (!acheck_collision(alien_column, new_row))
+                strail = 1;
+                prev_row = alien_row;
+                prev_column = alien_column;
+                trail_row.push_back(alien_row);
+                trail_column.push_back(alien_column);
+
+                alien_row--; // y = y - 1
+                cout << "\nAlien moved up." << endl;
+
+                arrow();
+                if (arrow_move)
                 {
-                    alien_row--; // y = y - 1
-
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows);
-                    cout << "\nAlien moved up.\n"
-                         << endl;
-
-                    system("PAUSE");
-                    system("CLS");
-                }
-                else
-                {
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows);
-                    cout << "\nAlien hit a rock.\n"
-                         << endl;
-
-                    system("PAUSE");
-                    system("CLS");
                     break;
                 }
+                rock();
+                if (turn)
+                {
+                    break;
+                }
+                health_pack();
+                pod();
+
+                system("PAUSE");
+                system("CLS");
+                print_board(zombies_columns, zombies_rows);
+            }
+            turn = false;
+            arrow_move = false;
+            alien_attack = 0;
+            strail = 0;
+            rtrail();
+            trail_row.clear();
+            trail_column.clear();
+
+            if (alien_row <= 0)
+            {
+                cout << "\nAlien hit the game border.\n"
+                     << endl;
+                system("PAUSE");
+                system("CLS");
+                break;
             }
             else
             {
-                system("CLS");
-                print_board(zombies_columns, zombies_rows);
-                cout << "\nAlien hit the game border.\n"
-                     << endl;
                 system("PAUSE");
                 system("CLS");
                 break;
             }
         }
-        else if (move == "left")
+        else if (move == "left" || move == "a" || move == "a")
         {
-            if (alien_column > 0)
+            while (alien_column > 0 && !acheck_collision(alien_column - 1, alien_row))
             {
-                int new_col = alien_column - 1;
-                if (!acheck_collision(new_col, alien_row))
-                {
-                    alien_column--; // x = x - 1
+                strail = 1;
+                prev_row = alien_row;
+                prev_column = alien_column;
+                trail_row.push_back(alien_row);
+                trail_column.push_back(alien_column);
 
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows); // print the board to show updated alien movement
-                    cout << "\nAlien moved left.\n"
-                         << endl;
-                    system("PAUSE");
-                    system("CLS");
-                }
-                else
+                alien_column--; // x = x - 1
+                cout << "\nAlien moved left." << endl;
+
+                arrow();
+                if (arrow_move)
                 {
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows);
-                    cout << "A\nlien hit a rock.\n"
-                         << endl;
-                    system("PAUSE");
-                    system("CLS");
                     break;
                 }
+                rock();
+                if (turn)
+                {
+                    break;
+                }
+                health_pack();
+                pod();
+
+                system("PAUSE");
+                system("CLS");
+                print_board(zombies_columns, zombies_rows);
+            }
+            turn = false;
+            arrow_move = false;
+            alien_attack = 0;
+            strail = 0;
+            rtrail();
+            trail_row.clear();
+            trail_column.clear();
+
+            if (alien_column <= 0)
+            {
+                cout << "\nAlien hit the game border.\n"
+                     << endl;
+                system("PAUSE");
+                system("CLS");
+                break;
             }
             else
             {
-                system("CLS");
-                print_board(zombies_columns, zombies_rows);
-                cout << "\nAlien hit the game border.\n"
-                     << endl;
                 system("PAUSE");
                 system("CLS");
                 break;
             }
         }
-        else if (move == "down")
+        else if (move == "down" || move == "s" || move == "s")
         {
-            if (alien_row < row - 1)
+            while (alien_row < row - 1 && !acheck_collision(alien_column, alien_row + 1))
             {
-                int new_row = alien_row + 1;
-                if (!acheck_collision(alien_column, new_row))
-                {
-                    alien_row++; // y = y + 1
+                strail = 1;
+                prev_row = alien_row;
+                prev_column = alien_column;
+                trail_row.push_back(alien_row);
+                trail_column.push_back(alien_column);
 
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows); // print the board to show updated alien movement
-                    cout << "\nAlien moved down.\n"
-                         << endl;
-                    system("PAUSE");
-                    system("CLS");
-                }
-                else
+                alien_row++; // y = y + 1
+                cout << "\nAlien moved down." << endl;
+
+                arrow();
+                if (arrow_move)
                 {
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows);
-                    cout << "\nAlien hit a rock.\n"
-                         << endl;
-                    system("PAUSE");
-                    system("CLS");
                     break;
                 }
+                rock();
+                if (turn)
+                {
+                    break;
+                }
+                health_pack();
+                pod();
+
+                system("PAUSE");
+                system("CLS");
+                print_board(zombies_columns, zombies_rows);
+            }
+            turn = false;
+            arrow_move = false;
+            alien_attack = 0;
+            strail = 0;
+            rtrail();
+            trail_row.clear();
+            trail_column.clear();
+
+            if (alien_row >= row - 1)
+            {
+                cout << "\nAlien hit the game border.\n"
+                     << endl;
+                system("PAUSE");
+                system("CLS");
+                break;
             }
             else
             {
-                system("CLS");
-                print_board(zombies_columns, zombies_rows);
-                cout << "\nAlien hit the game border.\n"
-                     << endl;
                 system("PAUSE");
                 system("CLS");
                 break;
             }
         }
-        else if (move == "right")
+        else if (move == "right" || move == "d" || move == "d")
         {
-            if (alien_column < column - 1)
+            while (alien_column < column - 1 && !acheck_collision(alien_column + 1, alien_row))
             {
-                int new_col = alien_column + 1;
-                if (!acheck_collision(new_col, alien_row))
-                {
-                    alien_column++; // x = x + 1
+                strail = 1;
+                prev_row = alien_row;
+                prev_column = alien_column;
+                trail_row.push_back(alien_row);
+                trail_column.push_back(alien_column);
 
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows); // print the board to show updated alien movement
-                    cout << "\nAlien moved right.\n"
-                         << endl;
-                    system("PAUSE");
-                    system("CLS");
-                }
-                else
+                alien_column++; // x = x + 1
+                cout << "\nAlien moved right." << endl;
+
+                arrow();
+                if (arrow_move)
                 {
-                    system("CLS");
-                    print_board(zombies_columns, zombies_rows);
-                    cout << "\nAlien hit a rock.\n"
-                         << endl;
-                    system("PAUSE");
-                    system("CLS");
                     break;
                 }
-            }
-            else
-            {
+                rock();
+                if (turn)
+                {
+                    break;
+                }
+                health_pack();
+                pod();
+
+                system("PAUSE");
                 system("CLS");
                 print_board(zombies_columns, zombies_rows);
+            }
+            turn = false;
+            arrow_move = false;
+            alien_attack = 0;
+            strail = 0;
+            rtrail();
+            trail_row.clear();
+            trail_column.clear();
+
+            if (alien_column >= column - 1)
+            {
                 cout << "\nAlien hit the game border.\n"
                      << endl;
                 system("PAUSE");
                 system("CLS");
                 break;
             }
+            else
+            {
+                system("PAUSE");
+                system("CLS");
+                break;
+            }
+        }
+        else if (move == "arrow")
+        {
+            int x, y;
+            int index = -1;
+
+            while (true)
+            {
+                cout << "Enter row and column of the arrow: ";
+                cin >> x >> y;
+
+                // Check if the entered position has an arrow
+                for (int a = 0; a < num_arrows; a++)
+                {
+                    if (arrows_rows[a] == (x - 1) && arrows_columns[a] == (y - 1))
+                    {
+                        index = a;
+                        break;
+                    }
+                }
+                if (index == -1)
+                {
+                    cout << "No arrow found at the entered position." << endl;
+                }
+                else
+                {
+                    break;
+                }
+            } 
+
+            char dir;
+
+            while (true)
+            {
+                cout << "Enter the new direction for the arrow (^, v, <, >): ";
+                cin >> dir;
+
+                // Check if the entered direction is valid
+                if (dir != '^' && dir != 'v' && dir != '<' && dir != '>')
+                {
+                    cout << "Invalid direction entered." << endl;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            // Switch the direction of the arrow
+            char old = arrows[arrow_types[index]];
+            switch (arrows[arrow_types[index]])
+            {
+            case '^':
+                if (dir == 'v' || dir == '<' || dir == '>')
+                {
+                    arrow_types[index] = dir == 'v' ? 1 : (dir == '<' ? 2 : 3);
+                    board[arrows_rows[index]][arrows_columns[index]] = dir;
+                    cout << "Arrow direction changed from '" << old << "' to '" << dir << "' successfully." << endl;
+                }
+                else if (dir == '^')
+                {
+                    cout << "Entered arrow is the same. No changes has been made." << endl;
+                }
+                else
+                {
+                    cout << "Invalid direction entered." << endl;
+                }
+                break;
+            case 'v':
+                if (dir == '^' || dir == '<' || dir == '>')
+                {
+                    arrow_types[index] = dir == '^' ? 0 : (dir == '<' ? 2 : 3);
+                    board[arrows_rows[index]][arrows_columns[index]] = dir;
+                    cout << "Arrow direction changed from '" << old << "' to '" << dir << "' successfully." << endl;
+                }
+                else if (dir == 'v')
+                {
+                    cout << "Entered arrow is the same. No changes has been made." << endl;
+                }
+                else
+                {
+                    cout << "Invalid direction entered." << endl;
+                }
+                break;
+            case '<':
+                if (dir == '^' || dir == 'v' || dir == '>')
+                {
+                    arrow_types[index] = dir == '^' ? 0 : (dir == 'v' ? 1 : 3);
+                    board[arrows_rows[index]][arrows_columns[index]] = dir;
+                    cout << "Arrow direction changed from '" << old << "' to '" << dir << "' successfully." << endl;
+                }
+                else if (dir == '<')
+                {
+                    cout << "Entered arrow is the same. No changes has been made." << endl;
+                }
+                else
+                {
+                    cout << "Invalid direction entered." << endl;
+                }
+                break;
+            case '>':
+                if (dir == '^' || dir == 'v' || dir == '<')
+                {
+                    arrow_types[index] = dir == '^' ? 0 : (dir == 'v' ? 1 : 2);
+                    board[arrows_rows[index]][arrows_columns[index]] = dir;
+                    cout << "Arrow direction changed from '" << old << "' to '" << dir << "' successfully." << endl;
+                }
+                else if (dir == '>')
+                {
+                    cout << "Entered arrow is the same. No changes has been made." << endl;
+                }
+                else
+                {
+                    cout << "Invalid direction entered." << endl;
+                }
+                break;
+            }
+
+            system("PAUSE");
+            system("CLS");
         }
         else if (move == "help")
         {
-            cout << "1.  up     - Move Up    " << endl;
-            cout << "2.  left   - Move Left  " << endl;
-            cout << "3.  down   - Move Down  " << endl;
-            cout << "4.  right  - Move Right " << endl;
-            cout << "5.  help   - Help       " << endl;
-            cout << "6.  save   - Save       " << endl;
-            cout << "7.  load   - Load       " << endl;
-            cout << "8.  quit   - Quit       " << endl;
+            cout << "1.  w / up      - Move Up                " << endl;
+            cout << "2.  a / left    - Move Left              " << endl;
+            cout << "3.  s / down    - Move Down              " << endl;
+            cout << "4.  d / right   - Move Right             " << endl;
+            cout << "5.  arrow       - Change arrow direction " << endl;
+            cout << "6.  help        - Help                   " << endl;
+            cout << "7.  save        - Save                   " << endl;
+            cout << "8.  load        - Load                   " << endl;
+            cout << "9.  quit        - Quit                   " << endl;
 
             cout << endl;
             system("PAUSE");
@@ -819,12 +1055,12 @@ void Game::ingame()
             if (exit_choice == "y" || exit_choice == "Y")
             {
                 save();
-                cout << "\nThank you for playing. Please Come Again!!"<<endl;
+                cout << "\nThank you for playing. Please Come Again!!" << endl;
                 system("PAUSE");
                 exit(0);
             }
 
-            cout << "\nThank you for playing. Please Come Again!!"<<endl;
+            cout << "\nThank you for playing. Please Come Again!!" << endl;
             system("PAUSE");
             exit(0);
         }
@@ -834,6 +1070,396 @@ void Game::ingame()
             cout << endl;
             system("PAUSE");
             system("CLS");
+        }
+    }
+}
+
+// Trail
+void Game::rtrail()
+{
+    // Trail
+    for (int t = 0; t < trail_row.size(); t++)
+    {
+        if (strail == 1)
+        {
+            board[trail_row[t]][trail_column[t]] = '.';
+        }
+
+        else if (strail == 0)
+        {
+            // Trail
+            int random_object = rand() % 5;
+            if (random_object == 0)
+            {
+                board[trail_row[t]][trail_column[t]] = ' ';
+            }
+            else if (random_object == 1)
+            {
+                // Health Pack
+                health_rows.push_back(trail_row[t]);
+                health_columns.push_back(trail_column[t]);
+                board[trail_row[t]][trail_column[t]] = 'h';
+                num_health++;
+            }
+            else if (random_object == 2)
+            {
+                // Pod
+                pod_rows.push_back(trail_row[t]);
+                pod_columns.push_back(trail_column[t]);
+                board[trail_row[t]][trail_column[t]] = 'p';
+                num_pod++;
+            }
+            else if (random_object == 3)
+            {
+                // Rock
+                rocks_rows.push_back(trail_row[t]);
+                rocks_columns.push_back(trail_column[t]);
+                board[trail_row[t]][trail_column[t]] = 'r';
+                num_rocks++;
+            }
+            else if (random_object == 4)
+            {
+                // Arrows
+                arrows_rows.push_back(trail_row[t]);
+                arrows_columns.push_back(trail_column[t]);
+                arrow_types.push_back(rand() % arrows.size());
+                board[trail_row[t]][trail_column[t]] = arrows[arrow_types.back()];
+                num_arrows++;
+            }
+        }
+    }
+}
+
+// Arrow
+void Game::arrow()
+{
+    for (int a = 0; a < num_arrows; a++)
+    {
+        if (arrows_columns[a] == alien_column && arrows_rows[a] == alien_row)
+        {
+            if (arrow_types[a] == 0)
+            {
+                int i = 0;
+                while (alien_row > 0 && !acheck_collision(alien_column, alien_row - 1))
+                {
+                    strail = 1;
+                    prev_row = alien_row;
+                    prev_column = alien_column;
+                    trail_row.push_back(alien_row);
+                    trail_column.push_back(alien_column);
+                    alien_row--;
+
+                    if (i == 0)
+                    {
+                        alien_attack += 20;
+                        cout << "Alien found an arrow and moved up." << endl;
+                        cout << "Alien's attack +20." << endl;
+                        i++;
+                    }
+                    else if (i != 0)
+                    {
+                        cout << "\nAlien moved up." << endl;
+                    }
+
+                    arrow();
+                    if (arrow_move)
+                    {
+                        break;
+                    }
+                    rock();
+                    if (turn)
+                    {
+                        break;
+                    }
+                    health_pack();
+                    pod();
+
+                    system("PAUSE");
+                    system("CLS");
+                    print_board(zombies_columns, zombies_rows);
+                }
+                if (alien_row <= 0)
+                {
+                    cout << "\nAlien hit the game border.\n"
+                         << endl;
+                    system("PAUSE");
+                    system("CLS");
+                }
+            }
+            else if (arrow_types[a] == 1)
+            {
+                int i = 0;
+                while (alien_row < row - 1 && !acheck_collision(alien_column, alien_row + 1))
+                {
+                    strail = 1;
+                    prev_row = alien_row;
+                    prev_column = alien_column;
+                    trail_row.push_back(alien_row);
+                    trail_column.push_back(alien_column);
+                    alien_row++;
+                    if (i == 0)
+                    {
+                        alien_attack += 20;
+                        cout << "Alien found an arrow and moved down." << endl;
+                        cout << "Alien's attack +20." << endl;
+                        i++;
+                    }
+                    else if (i != 0)
+                    {
+                        cout << "\nAlien moved down." << endl;
+                    }
+
+                    arrow();
+                    if (arrow_move)
+                    {
+                        break;
+                    }
+                    rock();
+                    if (turn)
+                    {
+                        break;
+                    }
+                    health_pack();
+                    pod();
+
+                    system("PAUSE");
+                    system("CLS");
+                    print_board(zombies_columns, zombies_rows);
+                }
+                if (alien_row >= row - 1)
+                {
+                    cout << "\nAlien hit the game border.\n"
+                         << endl;
+                    system("PAUSE");
+                    system("CLS");
+                }
+            }
+            else if (arrow_types[a] == 2)
+            {
+                int i = 0;
+                while (alien_column > 0 && !acheck_collision(alien_column - 1, alien_row))
+                {
+                    strail = 1;
+                    prev_row = alien_row;
+                    prev_column = alien_column;
+                    trail_row.push_back(alien_row);
+                    trail_column.push_back(alien_column);
+                    alien_column--;
+                    if (i == 0)
+                    {
+                        alien_attack += 20;
+                        cout << "Alien found an arrow and moved left." << endl;
+                        cout << "Alien's attack +20." << endl;
+                        i++;
+                    }
+                    else if (i != 0)
+                    {
+                        cout << "\nAlien moved left." << endl;
+                    }
+
+                    arrow();
+                    if (arrow_move)
+                    {
+                        break;
+                    }
+                    rock();
+                    if (turn)
+                    {
+                        break;
+                    }
+                    health_pack();
+                    pod();
+
+                    system("PAUSE");
+                    system("CLS");
+                    print_board(zombies_columns, zombies_rows);
+                }
+                if (alien_column <= 0)
+                {
+                    cout << "\nAlien hit the game border.\n"
+                         << endl;
+                    system("PAUSE");
+                    system("CLS");
+                }
+            }
+            else if (arrow_types[a] == 3)
+            {
+                int i = 0;
+                while (alien_column < column - 1 && !acheck_collision(alien_column + 1, alien_row))
+                {
+                    strail = 1;
+                    prev_row = alien_row;
+                    prev_column = alien_column;
+                    trail_row.push_back(alien_row);
+                    trail_column.push_back(alien_column);
+                    alien_column++;
+                    if (i == 0)
+                    {
+                        alien_attack += 20;
+                        cout << "Alien found an arrow and moved right." << endl;
+                        cout << "Alien's attack +20." << endl;
+                        i++;
+                    }
+                    else if (i != 0)
+                    {
+                        cout << "\nAlien moved right." << endl;
+                    }
+
+                    arrow();
+                    if (arrow_move)
+                    {
+                        break;
+                    }
+                    rock();
+                    if (turn)
+                    {
+                        break;
+                    }
+                    health_pack();
+                    pod();
+
+                    system("PAUSE");
+                    system("CLS");
+                    print_board(zombies_columns, zombies_rows);
+                }
+                if (alien_column >= column - 1)
+                {
+                    cout << "\nAlien hit the game border.\n"
+                         << endl;
+                    system("PAUSE");
+                    system("CLS");
+                }
+            }
+            board[arrows_rows[a]][arrows_columns[a]] = ' ';
+            arrows_rows.erase(arrows_rows.begin() + a);
+            arrows_columns.erase(arrows_columns.begin() + a);
+            num_arrows--;
+
+            arrow_move = true;
+        }
+    }
+}
+
+// Rock
+void Game::rock()
+{
+    for (int r = 0; r < num_rocks; r++)
+    {
+        if (alien_row == rocks_rows[r] && alien_column == rocks_columns[r])
+        {
+            // Remove previous position from trail object
+            if (!trail_row.empty() && !trail_column.empty())
+            {
+                trail_row.pop_back();
+                trail_column.pop_back();
+            }
+
+            alien_row = prev_row;
+            alien_column = prev_column;
+
+            board[rocks_rows[r]][rocks_columns[r]] = ' ';
+            cout << "\nAlien hits a rock." << endl;
+
+            int row = rocks_rows[r];
+            int col = rocks_columns[r];
+
+            rocks_rows.erase(rocks_rows.begin() + r);
+            rocks_columns.erase(rocks_columns.begin() + r);
+            num_rocks--;
+
+            int random_object = rand() % 3;
+            if (random_object == 0)
+            {
+                // Health Pack
+                health_rows.push_back(row);
+                health_columns.push_back(col);
+                board[row][col] = 'h';
+                num_health++;
+                cout << "Alien found a Health Pack" << endl;
+            }
+            else if (random_object == 1)
+            {
+                // Pod
+                pod_rows.push_back(row);
+                pod_columns.push_back(col);
+                board[row][col] = 'p';
+                num_pod++;
+                cout << "Alien found a Pod" << endl;
+            }
+            else if (random_object == 2)
+            {
+                // Arrows
+                arrows_rows.push_back(row);
+                arrows_columns.push_back(col);
+                arrow_types.push_back(rand() % arrows.size());
+                board[row][col] = arrows[arrow_types.back()];
+                num_arrows++;
+                cout << "Alien found an arrow" << endl;
+            }
+            turn = true;
+        }
+    }
+}
+
+// Health Pack
+void Game::health_pack()
+{
+    for (int h = 0; h < num_health; h++)
+    {
+        if (alien_row == health_rows[h] && alien_column == health_columns[h])
+        {
+            board[health_rows[h]][health_columns[h]] = ' ';
+
+            if (alien_health < 100)
+            {
+                alien_health += 20;
+                cout << "Alien found a health pack, +20 Health.\n"
+                     << endl;
+            }
+            else
+            {
+                alien_health = 100;
+                cout << "Alien found a health pack, but health is full.\n"
+                     << endl;
+            }
+            health_rows.erase(health_rows.begin() + h);
+            health_columns.erase(health_columns.begin() + h);
+            num_health--;
+        }
+    }
+}
+
+// Pod
+void Game::pod()
+{
+    for (int p = 0; p < num_pod; p++)
+    {
+        if (alien_row == pod_rows[p] && alien_column == pod_columns[p])
+        {
+            board[pod_rows[p]][pod_columns[p]] = ' ';
+
+            int zclosest = INT_MAX;
+            int zclosest_i = -1;
+            for (int i = 0; i < num_zombies; i++)
+            {
+                int distance = abs(zombies_rows[i] - alien_row) + abs(zombies_columns[i] - alien_column);
+                if (distance < zclosest)
+                {
+                    zclosest = distance;
+                    zclosest_i = i;
+                }
+            }
+            if (zclosest_i != -1)
+            {
+                zombies_health[zclosest_i] -= 10;
+
+                cout << "\nAlien finds a pod" << endl;
+                cout << "Zombie " << zclosest_i + 1 << " receive 10 damage\n"
+                     << endl;
+            }
+            pod_rows.erase(pod_rows.begin() + p);
+            pod_columns.erase(pod_columns.begin() + p);
+            num_pod--;
         }
     }
 }
@@ -858,12 +1484,14 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
                 zombies_column++;
                 cout << "\nZombie " << zombie_index + 1 << " moved right.\n"
                      << endl;
+                zombieontop();
             }
             else if (move == 1 && zombies_row < row - 1 && !zcheck_collision(zombies_column, zombies_row + 1)) // check if the spot to the down is occupied by another zombie
             {
                 zombies_row++;
                 cout << "\nZombie " << zombie_index + 1 << " moved down.\n"
                      << endl;
+                zombieontop();
             }
             else
             {
@@ -887,12 +1515,14 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
                 zombies_column--;
                 cout << "\nZombie " << zombie_index + 1 << " moved left.\n"
                      << endl;
+                zombieontop();
             }
             else if (move == 1 && zombies_row > 0 && !zcheck_collision(zombies_column, zombies_row - 1)) // check if the spot to the up is occupied by another zombie
             {
                 zombies_row--;
                 cout << "\nZombie " << zombie_index + 1 << " moved up.\n"
                      << endl;
+                zombieontop();
             }
             else
             {
@@ -916,12 +1546,14 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
                 zombies_column++;
                 cout << "\nZombie " << zombie_index + 1 << " moved right.\n"
                      << endl;
+                zombieontop();
             }
             else if (move == 1 && zombies_row > 0 && !zcheck_collision(zombies_column, zombies_row - 1)) // check if the spot to the up is occupied by another zombie
             {
                 zombies_row--;
                 cout << "\nZombie " << zombie_index + 1 << " moved up.\n"
                      << endl;
+                zombieontop();
             }
             else
             {
@@ -945,12 +1577,14 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
                 zombies_column--;
                 cout << "\nZombie " << zombie_index + 1 << " moved left.\n"
                      << endl;
+                zombieontop();
             }
             else if (move == 1 && zombies_row < row - 1 && !zcheck_collision(zombies_column, zombies_row + 1)) // check if the spot to the down is occupied by another zombie
             {
                 zombies_row++;
                 cout << "\nZombie " << zombie_index + 1 << " moved down.\n"
                      << endl;
+                zombieontop();
             }
             else
             {
@@ -973,12 +1607,14 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
                 zombies_row++;
                 cout << "\nZombie " << zombie_index + 1 << " moved down.\n"
                      << endl;
+                zombieontop();
             }
             else if (alien_row < zombies_row && zombies_row > 0 && !zcheck_collision(zombies_column, zombies_row - 1)) // check if the spot to the up is occupied by another zombie
             {
                 zombies_row--;
                 cout << "\nZombie " << zombie_index + 1 << " moved up.\n"
                      << endl;
+                zombieontop();
             }
             else
             {
@@ -1001,12 +1637,14 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
                 zombies_column++;
                 cout << "\nZombie " << zombie_index + 1 << " moved right.\n"
                      << endl;
+                zombieontop();
             }
             else if (alien_column < zombies_column && zombies_column > 0 && !zcheck_collision(zombies_column - 1, zombies_row)) // check if the spot to the left is occupied by another zombie
             {
                 zombies_column--;
                 cout << "\nZombie " << zombie_index + 1 << " moved left.\n"
                      << endl;
+                zombieontop();
             }
             else
             {
@@ -1015,6 +1653,57 @@ void Game::move_zombie(int &zombies_column, int &zombies_row, int zombie_index)
             }
         }
     }
+}
+
+// check zombies is on top of any elements
+void Game::zombieontop()
+{
+    for (int i = 0; i < num_zombies; i++)
+    {
+        // check if new position is already occupied by health pack
+        for (int h = 0; h < health_columns.size(); h++)
+        {
+            if (health_columns[h] == zombies_columns[i] && health_rows[h] == zombies_rows[i])
+            {
+                board[health_rows[h]][health_columns[h]] = ' ';
+                health_rows.erase(health_rows.begin() + h);
+                health_columns.erase(health_columns.begin() + h);
+                num_health--;
+            }
+        }
+        // check if new position is already occupied by pod
+        for (int p = 0; p < pod_columns.size(); p++)
+        {
+            if (pod_columns[p] == zombies_columns[i] && pod_rows[p] == zombies_rows[i])
+            {
+                board[pod_rows[p]][pod_columns[p]] = ' ';
+                pod_rows.erase(pod_rows.begin() + p);
+                pod_columns.erase(pod_columns.begin() + p);
+                num_pod--;
+            }
+        }
+        // check if new position is already occupied by arrows
+        for (int a = 0; a < arrows_columns.size(); a++)
+        {
+            if (arrows_columns[a] == zombies_columns[i] && arrows_rows[a] == zombies_rows[i])
+            {
+                board[arrows_rows[a]][arrows_columns[a]] = ' ';
+                arrows_rows.erase(arrows_rows.begin() + a);
+                arrows_columns.erase(arrows_columns.begin() + a);
+                num_arrows--;
+            }
+        }
+    }
+}
+
+// Check for empty space when spawn
+bool Game::empty(int x, int y)
+{
+    if (board[x][y] == ' ')
+    {
+        return true;
+    }
+    return false;
 }
 
 // check if the new position of the zombies is already occupied
@@ -1051,16 +1740,23 @@ bool Game::acheck_collision(int alien_column, int alien_row)
     {
         if (zombies_columns[i] == alien_column && zombies_rows[i] == alien_row)
         {
-            return true;
-        }
-
-        // rock
-        for (int r = 0; r < rocks_columns.size(); r++)
-        {
-            if (rocks_columns[r] == alien_column && rocks_rows[r] == alien_row)
+            if (alien_attack > 0)
             {
-                return true;
+                zombies_health[i] -= alien_attack;
+                cout << "Alien attacked zombie " << i + 1 << " for " << alien_attack << " ." << endl;
+                if (zombies_health[i] <= 0)
+                {
+                    cout << "Alien defeated zombie " << i + 1 << " ." << endl;
+                    board[zombies_rows[i]][zombies_columns[i]] = ' ';
+                    zombies_rows.erase(zombies_rows.begin() + i);
+                    zombies_columns.erase(zombies_columns.begin() + i);
+                    zombies_range.erase(zombies_range.begin() + i);
+                    zombies_health.erase(zombies_health.begin() + i);
+                    zombies_attack.erase(zombies_attack.begin() + i);
+                    num_zombies--;
+                }
             }
+            return true;
         }
     }
 
@@ -1098,21 +1794,40 @@ void Game::save()
     cout << "Enter filename to save: ";
     cin.ignore();           // ignore any remaining characters in the input buffer
     getline(cin, filename); // Space and special character are allowed
-    
+
     ofstream out(filename);
     out << alien_column << " " << alien_row << " " << alien_health << " " << alien_attack << endl; // for alien position and its health & attack
-    
-    out << column << " " << row << " " << num_zombies << endl;                                     // for zombies position
-    for (int i = 0; i < num_zombies; i++) 
+
+    out << column << " " << row << " " << num_zombies << endl; // for zombies position
+    for (int i = 0; i < num_zombies; i++)
     {
         out << zombies_rows[i] << " " << zombies_columns[i] << " " << zombies_health[i] << " " << zombies_attack[i] << " " << zombies_range[i] << endl;
     }
-    
-    out << num_rocks << endl;                                                                      // for rocks position
-    for (int i = 0; i < num_rocks; i++) 
+
+    out << num_rocks << endl; // for rocks position
+    for (int r = 0; r < num_rocks; r++)
     {
-        out << rocks_rows[i] << " " << rocks_columns[i] << endl;
+        out << rocks_rows[r] << " " << rocks_columns[r] << endl;
     }
+
+    out << num_health << endl; // for health pack position
+    for (int h = 0; h < num_health; h++)
+    {
+        out << health_rows[h] << " " << health_columns[h] << endl;
+    }
+
+    out << num_pod << endl; // for pods position
+    for (int p = 0; p < num_pod; p++)
+    {
+        out << pod_rows[p] << " " << pod_columns[p] << endl;
+    }
+
+    out << num_arrows << endl; // for arrows position
+    for (int a = 0; a < num_arrows; a++)
+    {
+        out << arrows_rows[a] << " " << arrows_columns[a]<< " " << arrow_types[a] << endl;
+    }
+
     for (int i = 0; i < row; i++)
     {
         for (int j = 0; j < column; j++)
@@ -1121,7 +1836,7 @@ void Game::save()
         }
         out << endl;
     }
-    
+
     out.close(); // close the file
     cout << "Game saved!" << endl;
     system("PAUSE");
@@ -1131,13 +1846,26 @@ void Game::save()
 void Game::load()
 {
     string filename;
-    cout << "Enter filename to load: ";
-    cin.ignore();           // ignore any remaining characters in the input buffer
-    getline(cin, filename); // Space and special character are allowed
-    
+
+    while (true)
+    {
+        cout << "Enter filename to load: ";
+        cin.ignore();           // ignore any remaining characters in the input buffer
+        getline(cin, filename); // Space and special character are allowed
+
+        if (!filesystem::exists(filename)) 
+        {
+            cout << "No file detected." << endl;
+        }
+        else
+        {
+            break;
+        }
+    }
+
     ifstream in(filename);
     in >> alien_column >> alien_row >> alien_health >> alien_attack;
-    
+
     in >> column >> row >> num_zombies;
     zombies_rows.resize(num_zombies);
     zombies_columns.resize(num_zombies);
@@ -1145,7 +1873,7 @@ void Game::load()
     {
         in >> zombies_rows[i] >> zombies_columns[i] >> zombies_health[i] >> zombies_attack[i] >> zombies_range[i];
     }
-    
+
     in >> num_rocks;
     rocks_rows.resize(num_rocks);
     rocks_columns.resize(num_rocks);
@@ -1153,7 +1881,32 @@ void Game::load()
     {
         in >> rocks_rows[i] >> rocks_columns[i];
     }
-    
+
+    in >> num_health;
+    health_rows.resize(num_health);
+    health_columns.resize(num_health);
+    for (int h = 0; h < num_health; h++)
+    {
+        in >> health_rows[h] >> health_columns[h];
+    }
+
+    in >> num_pod;
+    pod_rows.resize(num_pod);
+    pod_columns.resize(num_pod);
+    for (int p = 0; p < num_pod; p++)
+    {
+        in >> pod_rows[p] >> pod_columns[p];
+    }
+
+    in >> num_arrows;
+    arrows_rows.resize(num_arrows);
+    arrows_columns.resize(num_arrows);
+    arrow_types.resize(num_arrows);
+    for (int a = 0; a < num_arrows; a++)
+    {
+        in >> arrows_rows[a] >> arrows_columns[a] >> arrow_types[a];
+    }
+
     board.resize(row);
     for (int i = 0; i < row; i++)
     {
@@ -1166,12 +1919,11 @@ void Game::load()
             in >> board[i][j];
         }
     }
-    
+
     in.close();
     cout << "Game loaded!" << endl;
     system("PAUSE");
 }
-
 
 int main()
 {
@@ -1180,4 +1932,3 @@ int main()
     game.start();
     return 0;
 }
-
